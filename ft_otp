@@ -1,21 +1,30 @@
 #!/usr/bin/env python
 
+# explications globales : 
+# Toi et ton ami avez un secret que vous seuls connaissez. Ce secret, c’est un code secret, 
+# comme un mot de passe. Quand tu veux lui envoyer un message pour lui dire quelque chose d’important, 
+# tu utilises ce code pour prouver que c’est bien toi qui envoies le message, et que le message n’a pas été changé.
+# Les codes OTP sont générés en combinant ce "secret" avec l’heure actuelle. 
+# Par exemple, toutes les 30 secondes, le site et ton application vont chacun utiliser le même secret et l’heure 
+# du moment pour créer un nouveau code. C’est comme si le secret était une recette, et que l’heure 
+# agissait comme un ingrédient changeant.
+
+Ton application utilise cette recette pour générer le code OTP actuel.
+Le site utilise la même recette et le même secret, donc il calcule exactement le même code que toi pour ces 30 secondes.
+
 import hmac
-import hashlib # hashlib : Pour utiliser la fonction de hachage SHA-1.
-import struct # struct : Pour la manipulation des données binaires.
+import hashlib # Pour utiliser la fonction de hachage SHA-1.
+import struct # Pour la manipulation des données binaires.
 import time
 import os
 from cryptography.fernet import Fernet
 import sys
 from sys import argv
 
-# Nom du fichier de clé
 KEY_FILE = "ft_otp.key"
 
 # Fonction pour générer une clé chiffrée et la sauvegarder dans un fichier chiffre
 def save_encrypted_key(hex_key):
-    #si le fichier n'existe pas je prends l'argument + parsing
-    #si le fichier existe je l'ouvre en lecture + parsing
     if not os.path.exists(hex_key):
         hex_key = argv[2]
         if len(hex_key) != 64 or not all(c in '0123456789abcdefABCDEF' for c in hex_key):
@@ -28,186 +37,90 @@ def save_encrypted_key(hex_key):
                 print("error: key must be 64 hexadecimal characters.")
                 exit(1)
 
-    # Générer une clé de chiffrement et chiffrer la clé hexadécimale
-	#Cette ligne utilise la méthode generate_key() 
-	# de la classe Fernet pour créer une nouvelle clé de 
-	# chiffrement sécurisée. Que fait-on ? On crée une clé secrète 
-	# utilisée pour sécuriser des données. Pourquoi ? Cette clé est 
-	# nécessaire pour chiffrer (rendre illisible) et déchiffrer 
-	# (rendre à nouveau lisible) des informations sensibles.
     encryption_key = Fernet.generate_key()
-	# Que fait-on ? On prépare un outil (ou un "service") qui va 
-	# utiliser la clé genere precedemment pour chiffrer des données.
-	# Pourquoi ? Cet outil est ce qui nous permettra de chiffrer 
-	# et déchiffrer des informations en utilisant la clé secrète.
     cipher_suite = Fernet(encryption_key)
-	# Cette ligne chiffre la clé hexadécimale (qui est initialement 
-	# sous forme de chaîne de caractères) en utilisant l'instance cipher_suite. 
-	# La méthode encrypt() prend les données à chiffrer, ici 
-	# converties en bytes avec hex_key.encode(), et retourne 
-	# la version chiffrée de la clé, stockée dans encrypted_key.
+	# encode() convertit une string en bytes
     encrypted_key = cipher_suite.encrypt(hex_key.encode())
-
-    # Sauvegarder la clé chiffrée et la clé de chiffrement dans le fichier
-	# Que fait-on ? On ouvre (ou crée si le fichier n'existe pas) un fichier 
-	# nommé KEY_FILE (par exemple, ft_otp.key) en mode écriture binaire ('wb').
-	# Pourquoi ? Le mode binaire est utilisé pour écrire des données non 
-	# textuelles (comme des clés chiffrées). Cela garantit que les données sont 
-	# sauvegardées exactement comme elles sont, sans modification.
     with open(KEY_FILE, 'wb') as f:
-		# Que fait-on ? On écrit dans le fichier la clé de chiffrement 
-		# (encryption_key) suivie d'un saut de ligne (b"\n" pour un saut de ligne binaire) 
-		# et ensuite la clé chiffrée (encrypted_key). Pourquoi ? Cela permet de 
-		# sauvegarder à la fois la clé de chiffrement (qui sera utilisée plus 
-		# tard pour déchiffrer les données) et la clé chiffrée (qui est protégée). 
-		# Le saut de ligne aide à séparer visuellement les deux clés dans le fichier.
         f.write(encryption_key + b"\n" + encrypted_key)
     print("Key was successfully saved in ft_otp.key.")
 
-# Fonction pour charger et déchiffrer la clé hexadécimale à partir du fichier
+
+# Fonction pour déchiffrer la clé hexadécimale à partir du fichier
 def load_encrypted_key(key_or_file):
-    # Vérifier si l'argument est un fichier existant
     if os.path.exists(key_or_file):
-        # Charger la clé depuis le fichier chiffré
-		# Que fait-on ? On ouvre le fichier spécifié par key_or_file 
-		# (qui peut être un fichier contenant une clé chiffrée) en mode lecture 
-		# binaire ('rb').
         with open(key_or_file, 'rb') as f:
-			# Que fait-on ? On lit la première ligne du fichier et on la stocke 
-			# dans la variable encryption_key. La méthode strip() est utilisée pour 
-			# supprimer les espaces et les caractères de saut de ligne au début et à 
-			# la fin de la chaîne.
-			# Pourquoi ? La première ligne contient la clé de chiffrement qui sera utilisée 
-			# plus tard pour déchiffrer les données. La suppression des espaces inutiles 
-			# garantit que la clé est propre et prête à l'emploi.
             encryption_key = f.readline().strip()
             encrypted_key = f.readline().strip()
 
-        # Déchiffrer la clé
         cipher_suite = Fernet(encryption_key)
-        #This method is used to convert from one encoding scheme, in which the argument string 
-        # is encoded to the desired encoding scheme. 
         hex_key = cipher_suite.decrypt(encrypted_key).decode()
         return hex_key
     else:
-        # Si ce n'est pas un fichier, vérifier si c'est une clé hexadécimale
-		# all() : Cette fonction renvoie True si tous les caractères respectent une condition donnée.
-		# for c in key_or_file : Parcourt chaque caractère c dans la chaîne key_or_file.
-		# c in '0123456789abcdefABCDEF' : Vérifie que chaque caractère c est bien un chiffre hexadécimal 
-		# (un chiffre entre 0-9 ou une lettre a-f/A-F). Si un seul caractère n'appartient pas à l'ensemble 
-		# des caractères hexadécimaux, la condition devient False et la vérification échoue.
         if len(key_or_file) < 64 or not all(c in '0123456789abcdefABCDEF' for c in key_or_file):
             print("error: key must be 64 hexadecimal characters.")
             exit(1)
-    
         # Si c'est une clé hexadécimale valide, la retourner directement
         return key_or_file
 
-# Fonction pour générer un code HOTP à partir d'une clé et d'un compteur
-# car l'algo hotp se base sur un compteur incremente pour genere un
-# nouveau code, et on va genere un code de 6 digits
-#https://chatgpt.com/share/66f5c84d-d1bc-8012-92d9-d05656952761
-def generate_hotp(key, counter, digits=6):
-    # Convertir la clé hexadécimale en bytes, qui est le format requis pour le calcul HMAC
-    # HMAC est un algorithme pour s'assurer que les messages sont sûrs et n'ont pas été altérés, 
-    # en utilisant une clé secrète et une fonction de hachage. Cela permet aux personnes de 
-    # communiquer en toute confiance !
-    # ici j'entre la clef secrete hexadecimal de 64 characteres et j'utilise la fonction 
-    # bytes qui va CONVERTIR "from hex" hexadecimal, ma clef vers des octets bytes
-    key_bytes = bytes.fromhex(key) #bytes.from -> chaine hexadecimal vers bytes
+def generate_otp(key, counter, digits=6):
+    key_bytes = bytes.fromhex(key)
 
-    # Convertir le compteur en 8 bytes big-endian :
-    # Le compteur est un nombre entier qui permet de générer des codes
-    # uniques chaque fois qu'il est incrémenté.
-    # struct pack va CONVERTIR le compteur en octet car HMAC a besoin de données sous forme de bytes pour fonctionner.
+    #Convertit le compteur en 8 bytes big-endian (on place les chiffres les plus importants en premier). 
+    # 8 bytes c'est 64 bits et c'est la valeur requise pour l'algorithme hotp (cf readme)
+    # car stock un nombre tres grands
     # > signifie qu'on utilise l'ordre big-endian (on place les chiffres les plus importants en premier).
-    # Q signifie qu'on traite un entier non signé de 64 bits (ce qui nécessite 8 octets, car 8 octets 
-    # sont nécessaires pour stocker un entier non signé de 64 bits).
-    counter_bytes = struct.pack('>Q', counter) #struct.pack -> valeurs (ex: entier, flottants) vers format 
-    # binaire specifique, ici, >Q
+    # Q signifie qu'on traite un entier non signé de 64 bits
+    counter_bytes = struct.pack('>Q', counter)
 
-    # Calculer le HMAC-SHA-1
-    # calcule un HMAC (Hash-based Message Authentication Code), qui est une 
-    # méthode permettant de vérifier que les données proviennent de la source 
-    # légitime (authentification) et qu'elles n'ont pas été modifiées (intégrité).
-    # La fonction hmac.new réalise ce calcul en prenant trois paramètres : la clé 
-    # secrète (key_bytes), le compteur ou les données à hacher (counter_bytes), et 
-    # l'algorithme de hachage utilisé (ici hashlib.sha1). Cette combinaison permet 
-    # de générer le HMAC. La méthode digest() retourne le résultat du calcul sous forme de bytes.
-    # Le hachage SHA-1 (ou Secure Hash Algorithm 1) est une fonction cryptographique de hachage 
-    #qui prend une donnée (comme un fichier, un texte, etc.) et génère une "empreinte" unique de 
-#longueur fixe de 160 bits (20 octets). Cette empreinte, appelée aussi haché ou hash, représente 
-   #de manière condensée la donnée d’origine. SHA-1 appartient à la famille de fonctions de hachage 
-#développée par la NSA (National Security Agency) aux États-Unis et a été publié par le NIST (National 
-#Institute of Standards and Technology).
-#À quoi sert SHA-1 ? Vérification d’intégrité : SHA-1 est souvent utilisé pour vérifier 
-#l’intégrité d’un fichier ou d’une donnée. Par exemple, après un téléchargement, le haché 
-#SHA-1 du fichier peut être comparé à une version de référence pour s’assurer qu’aucune 
-#modification n’a eu lieu pendant le transfert.
-    hmac_hash = hmac.new(key_bytes, counter_bytes, hashlib.sha1).digest()
+    # Calculer le HMAC-SHA-1, algo combinant
+    #HMAC (Hash-based Message Authentication Code), prend en param
+    # ce qui va peermettre de confirmer l'integrite des messages
+    #SHA-1 (Secure Hash Algorithm 1), type de hachage
+    #combinaison permet de garantir l'intégrité et l'authenticité des messages.
+    hmac_hash = hmac.new(key_bytes, counter_bytes, hashlib.sha1).digest() #digest() retourne le résultat du calcul sous forme de bytes
 
-    # Extraire le code dynamique à partir du HMAC
     # Cette ligne choisit un point de départ aléatoire dans le HMAC pour générer un 
-    # code OTP, rendant le code plus sécurisé et varié.
-    # Tu prends le résultat du HMAC.
-    # Tu prends le dernier octet (le dernier morceau).
+    # code OTP.
+    # Tu prends le dernier bytes (morceau)
     # Avec & 0xf, tu gardes seulement les 4 derniers bits de cet octet.
     # Ces 4 bits te donnent un petit nombre entre 0 et 15.
     # Tu utilises ce nombre comme un index pour extraire une partie du HMAC et créer ton code OTP.
-    # En gros, tu utilises ces 4 bits pour trouver où commencer dans le HMAC pour créer ton code de sécurité (OTP).
-    offset = hmac_hash[-1] & 0xf
-    # hmac_hash[offset:offset + 4] : On extrait 4 bytes A PARTIR de l'offset que nous 
-    # avons calculé précédemment. Pourquoi ? : Ces 4 bytes contiennent l'information 
+    # En gros, tu utilises ce nombre pour trouver où commencer dans le HMAC pour créer ton code de sécurité (OTP).
+    starting_point = hmac_hash[-1] & 0xf
+    # hmac_hash[starting_point:starting_point + 4] : On extrait 4 bytes A PARTIR de l'starting_point que nous 
+    # avons calculé précédemment car ces 4 bytes contiennent l'information 
     # nécessaire pour générer notre code OTP.
     # struct.unpack(">I", ...) : Cette fonction convertit les 4 bytes extraits en un entier 
-    # (un nombre entier non signé) en utilisant le format >I, qui signifie "big-endian".
-    # Pourquoi ? : Cela nous permet de travailler avec un nombre au lieu de plusieurs bytes, 
-    # ce qui est nécessaire pour le code OTP.
-    # Cette ligne extrait 4 bytes du HMAC, les convertit en un nombre entier positif, 
-    # ce qui est essentiel pour générer un code OTP. Le processus assure que le code est 
-    # basé sur une portion aléatoire du HMAC, ajoutant ainsi à sa sécurité
     # [0] : Le résultat de struct.unpack() est une liste (même si elle ne contient qu'un seul élément),
     #  donc [0] te donne le premier élément de cette liste, c'est-à-dire le nombre entier que tu viens de convertir.
-    #Cela te garantit que le nombre est positif en supprimant le bit de signe (le premier bit) si jamais il est négatif.
-    code = struct.unpack(">I", hmac_hash[offset:offset + 4])[0] & 0x7fffffff
-    # Retourner les 6 derniers chiffres du code
-    # Cette ligne retourne le code OTP sous forme de chaîne, en s'assurant qu'il contient 
-    # toujours le nombre spécifié de chiffres, en ajoutant des zéros au début si nécessaire. 
-    # Cela garantit que le code est toujours au format correct pour être utilisé.
-
-    # str(code) : Cela convertit la variable code en une chaîne de caractères car
-    # argv ne prend que des strings
-    # Pourquoi ? : Utiliser .zfill(digits) garantit que la chaîne résultante a toujours 
+    #Le & 0x7fffffff est une opération de masquage (ou masking en anglais). Elle force le nombre obtenu à être positif.
+    #ici on refait +4 car avant il prend le dernier morceau de l'octet mais sans position exacte
+    #la on part a 4 exactement car c'est une taille standart pour le calcule otp
+    code = struct.unpack(">I", hmac_hash[starting_point:starting_point + 4])[0] & 0x7fffffff
+    #Utiliser .zfill(digits) garantit que la chaîne résultante a toujours 
     # exactement digits caractères. Cela permet d’ajouter des zéros devant si le code est trop court.
-    # [-digits:] : je prends les 6 derniers chiffres pour creer mon code otp
-    #Le masque 0x7fffffff en binaire correspond à 01111111111111111111111111111111. 
-    #En appliquant un AND bit à bit avec ce masque, le bit de signe est forcé à 0, 
-    #et tous les autres bits sont conservés.
-    #Cela permet de garder uniquement la partie positive 
-    #de l'entier, donc d'avoir un nombre positif quel que soit le résultat initial.
+    # [-digits:] : je prends les 6 derniers (d'ou le -) chiffres pour creer mon code otp unique
     return str(code)[-digits:].zfill(digits)
 
 def main():
-#parsing input
     if len(argv) < 2:
         print("Usage:\n -g <hexadecimal_key> to generate and store the key\n -k to generate an OTP code")
         exit(1)
 
-	#association des fonctions avec l'argument
     if argv[1] == "-g" and len(argv) == 3:
-        save_encrypted_key(argv[2])
+        save_encrypted_key(argv[2]) #fichier chiffre
     elif argv[1] == "-k" and len(argv) == 3:
-        hex_key = load_encrypted_key(argv[2]) # Charger la clé
+        hex_key = load_encrypted_key(argv[2]) #clef chiffre et de dechiffrement
 
-        # Utiliser le temps UNIX divisé par 30 comme compteur pour avoir un mot de passe unique à chaque demande.
-		# La ligne counter = int(time.time() // 30) crée un compteur basé sur le temps, qui augmente toutes les 30 secondes. 
-		# Ce compteur sert à générer un mot de passe unique temporaire dans l'algorithme HOTP. Chaque nouvelle période de 30 
-		# secondes produit un nouveau mot de passe. Un compteur qui s'incrémente est simplement une variable qui augmente 
-		# régulièrement, ici en fonction du temps.
+        #creation du compteur qui va s'incrementer toutes les 30 secondes
+        #time.time() renvoit le temps en unix (temps ecoule depuis 1970)
+        #il se base sur cette "heure" la pour incrementer le compteur
+        #le temps en secondes est renvoye en float donc cast en int
+        #totp wtf ??
         counter = int(time.time() // 30)
 
-        # Générer et afficher le code OTP
-        otp = generate_hotp(hex_key, counter)
+        otp = generate_otp(hex_key, counter)
         print(f"{otp}")
     else:
         print("Usage:\n -g <hexadecimal_key> to generate and store the key\n -k to generate an OTP code")
