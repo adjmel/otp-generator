@@ -1,17 +1,5 @@
 #!/usr/bin/env python
 
-# explications globales : 
-# Toi et ton ami avez un secret que vous seuls connaissez. Ce secret, c’est un code secret, 
-# comme un mot de passe. Quand tu veux lui envoyer un message pour lui dire quelque chose d’important, 
-# tu utilises ce code pour prouver que c’est bien toi qui envoies le message, et que le message n’a pas été changé.
-# Les codes OTP sont générés en combinant ce "secret" avec l’heure actuelle. 
-# Par exemple, toutes les 30 secondes, le site et ton application vont chacun utiliser le même secret et l’heure 
-# du moment pour créer un nouveau code. C’est comme si le secret était une recette, et que l’heure 
-# agissait comme un ingrédient changeant.
-
-Ton application utilise cette recette pour générer le code OTP actuel.
-Le site utilise la même recette et le même secret, donc il calcule exactement le même code que toi pour ces 30 secondes.
-
 import hmac
 import hashlib # Pour utiliser la fonction de hachage SHA-1.
 import struct # Pour la manipulation des données binaires.
@@ -23,7 +11,6 @@ from sys import argv
 
 KEY_FILE = "ft_otp.key"
 
-# Fonction pour générer une clé chiffrée et la sauvegarder dans un fichier chiffre
 def save_encrypted_key(hex_key):
     if not os.path.exists(hex_key):
         hex_key = argv[2]
@@ -39,14 +26,12 @@ def save_encrypted_key(hex_key):
 
     encryption_key = Fernet.generate_key()
     cipher_suite = Fernet(encryption_key)
-	# encode() convertit une string en bytes
     encrypted_key = cipher_suite.encrypt(hex_key.encode())
     with open(KEY_FILE, 'wb') as f:
         f.write(encryption_key + b"\n" + encrypted_key)
     print("Key was successfully saved in ft_otp.key.")
 
 
-# Fonction pour déchiffrer la clé hexadécimale à partir du fichier
 def load_encrypted_key(key_or_file):
     if os.path.exists(key_or_file):
         with open(key_or_file, 'rb') as f:
@@ -60,47 +45,14 @@ def load_encrypted_key(key_or_file):
         if len(key_or_file) < 64 or not all(c in '0123456789abcdefABCDEF' for c in key_or_file):
             print("error: key must be 64 hexadecimal characters.")
             exit(1)
-        # Si c'est une clé hexadécimale valide, la retourner directement
         return key_or_file
 
 def generate_otp(key, counter, digits=6):
     key_bytes = bytes.fromhex(key)
-
-    #Convertit le compteur en 8 bytes big-endian (on place les chiffres les plus importants en premier). 
-    # 8 bytes c'est 64 bits et c'est la valeur requise pour l'algorithme hotp (cf readme)
-    # car stock un nombre tres grands
-    # > signifie qu'on utilise l'ordre big-endian (on place les chiffres les plus importants en premier).
-    # Q signifie qu'on traite un entier non signé de 64 bits
     counter_bytes = struct.pack('>Q', counter)
-
-    # Calculer le HMAC-SHA-1, algo combinant
-    #HMAC (Hash-based Message Authentication Code), prend en param
-    # ce qui va peermettre de confirmer l'integrite des messages
-    #SHA-1 (Secure Hash Algorithm 1), type de hachage
-    #combinaison permet de garantir l'intégrité et l'authenticité des messages.
     hmac_hash = hmac.new(key_bytes, counter_bytes, hashlib.sha1).digest() #digest() retourne le résultat du calcul sous forme de bytes
-
-    # Cette ligne choisit un point de départ aléatoire dans le HMAC pour générer un 
-    # code OTP.
-    # Tu prends le dernier bytes (morceau)
-    # Avec & 0xf, tu gardes seulement les 4 derniers bits de cet octet.
-    # Ces 4 bits te donnent un petit nombre entre 0 et 15.
-    # Tu utilises ce nombre comme un index pour extraire une partie du HMAC et créer ton code OTP.
-    # En gros, tu utilises ce nombre pour trouver où commencer dans le HMAC pour créer ton code de sécurité (OTP).
     starting_point = hmac_hash[-1] & 0xf
-    # hmac_hash[starting_point:starting_point + 4] : On extrait 4 bytes A PARTIR de l'starting_point que nous 
-    # avons calculé précédemment car ces 4 bytes contiennent l'information 
-    # nécessaire pour générer notre code OTP.
-    # struct.unpack(">I", ...) : Cette fonction convertit les 4 bytes extraits en un entier 
-    # [0] : Le résultat de struct.unpack() est une liste (même si elle ne contient qu'un seul élément),
-    #  donc [0] te donne le premier élément de cette liste, c'est-à-dire le nombre entier que tu viens de convertir.
-    #Le & 0x7fffffff est une opération de masquage (ou masking en anglais). Elle force le nombre obtenu à être positif.
-    #ici on refait +4 car avant il prend le dernier morceau de l'octet mais sans position exacte
-    #la on part a 4 exactement car c'est une taille standart pour le calcule otp
     code = struct.unpack(">I", hmac_hash[starting_point:starting_point + 4])[0] & 0x7fffffff
-    #Utiliser .zfill(digits) garantit que la chaîne résultante a toujours 
-    # exactement digits caractères. Cela permet d’ajouter des zéros devant si le code est trop court.
-    # [-digits:] : je prends les 6 derniers (d'ou le -) chiffres pour creer mon code otp unique
     return str(code)[-digits:].zfill(digits)
 
 def main():
@@ -112,14 +64,7 @@ def main():
         save_encrypted_key(argv[2]) #fichier chiffre
     elif argv[1] == "-k" and len(argv) == 3:
         hex_key = load_encrypted_key(argv[2]) #clef chiffre et de dechiffrement
-
-        #creation du compteur qui va s'incrementer toutes les 30 secondes
-        #time.time() renvoit le temps en unix (temps ecoule depuis 1970)
-        #il se base sur cette "heure" la pour incrementer le compteur
-        #le temps en secondes est renvoye en float donc cast en int
-        #totp wtf ??
         counter = int(time.time() // 30)
-
         otp = generate_otp(hex_key, counter)
         print(f"{otp}")
     else:
